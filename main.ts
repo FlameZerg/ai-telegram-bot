@@ -54,8 +54,8 @@ async function main() {
       async (req: Request) => {
         const url = new URL(req.url);
 
-        // Webhook端点
-        if (url.pathname === "/webhook" && req.method === "POST") {
+        // Webhook端点（支持根路径和 /webhook）
+        if (req.method === "POST" && (url.pathname === "/" || url.pathname === "/webhook")) {
           return await handler(req);
         }
 
@@ -63,16 +63,30 @@ async function main() {
         if (url.pathname === "/setup" && req.method === "GET") {
           try {
             const origin = `${url.protocol}//${url.host}`; // 从请求推导域名
-            const dynamicWebhookUrl = `${origin}/webhook`;
-            await setupWebhook(bot, dynamicWebhookUrl);
+            // 允许使用根路径作为webhook，满足“直接域名即可”的诉求
+            const desired = origin; // 也可改为 `${origin}/webhook`
+
+            // 避免频繁调用：若已设置则直接返回成功
+            const info = await bot.api.getWebhookInfo();
+            if (info.url === desired) {
+              return new Response(
+                JSON.stringify({ success: true, webhook: desired, message: "already_set" }),
+                { status: 200, headers: { "Content-Type": "application/json" } },
+              );
+            }
+
+            await setupWebhook(bot, desired);
             return new Response(
-              JSON.stringify({ success: true, webhook: dynamicWebhookUrl }),
+              JSON.stringify({ success: true, webhook: desired }),
               { status: 200, headers: { "Content-Type": "application/json" } },
             );
           } catch (e) {
+            // 优雅处理429等错误
+            const err = e as any;
+            const payload = { success: false, error: String(err), retry_after: err?.parameters?.retry_after };
             return new Response(
-              JSON.stringify({ success: false, error: String(e) }),
-              { status: 500, headers: { "Content-Type": "application/json" } },
+              JSON.stringify(payload),
+              { status: 200, headers: { "Content-Type": "application/json" } },
             );
           }
         }
