@@ -5,7 +5,8 @@
   },
   "imports": {
     "grammy": "https://deno.land/x/grammy@v1.21.1/mod.ts",
-    "grammy/types": "https://deno.land/x/grammy@v1.21.1/types.ts"
+    "grammy/types": "https://deno.land/x/grammy@v1.21.1/types.ts",
+    "@modelcontextprotocol/sdk": "npm:@modelcontextprotocol/sdk@^1.22.0"
   },
   "compilerOptions": {
     "strict": true,

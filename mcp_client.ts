@@ -1,33 +1,12 @@
-// mcp_client.ts - MCP协议客户端（SSE传输）
+// mcp_client.ts - MCP协议客户端（官方SDK，双模式：SSE + StreamableHTTP）
 
-import type { BotConfig } from "./types.ts";
-
-/**
- * MCP JSON-RPC 2.0 请求格式
- */
-interface MCPRequest {
-  jsonrpc: "2.0";
-  id: string | number;
-  method: string;
-  params?: Record<string, unknown>;
-}
+import { Client } from 'npm:@modelcontextprotocol/sdk@1.22.0/client/index.js';
+import { SSEClientTransport } from 'npm:@modelcontextprotocol/sdk@1.22.0/client/sse.js';
+import { StreamableHTTPClientTransport } from 'npm:@modelcontextprotocol/sdk@1.22.0/client/streamableHttp.js';
+import type { BotConfig, MCPTransportMode } from "./types.ts";
 
 /**
- * MCP JSON-RPC 2.0 响应格式
- */
-interface MCPResponse {
-  jsonrpc: "2.0";
-  id: string | number;
-  result?: unknown;
-  error?: {
-    code: number;
-    message: string;
-    data?: unknown;
-  };
-}
-
-/**
- * MCP工具定义（符合MCP协议标准）
+ * MCP工具定义
  */
 export interface MCPTool {
   name: string;
@@ -54,17 +33,115 @@ export interface GeminiFunctionDeclaration {
 }
 
 /**
- * MCP SSE客户端类
- * 
- * 使用Server-Sent Events (SSE)与MCP工具服务器通信
+ * 检测MCP服务器传输模式
+ * @param url MCP服务器URL
+ * @returns 传输模式
+ */
+function detectTransportMode(url: string): MCPTransportMode {
+  const urlLower = url.toLowerCase();
+  
+  if (urlLower.includes('/sse')) {
+    return 'sse';
+  }
+  
+  if (urlLower.includes('/mcp') || urlLower.includes('streamable')) {
+    return 'streamable_http';
+  }
+  
+  // 默认使用SSE模式（更通用）
+  return 'sse';
+}
+
+/**
+ * MCP客户端（使用官方SDK，双模式：SSE + StreamableHTTP）
  */
 export class MCPSSEClient {
+  private client: Client | null = null;
+  private transport: SSEClientTransport | StreamableHTTPClientTransport | null = null;
+  private isConnected = false;
   private mcpApiUrl: string;
-  private requestId = 0;
-  private readonly TIMEOUT = 30000; // 统一30秒超时
+  private transportMode: MCPTransportMode;
+  private readonly TIMEOUT = 30000; // 30秒超时
 
   constructor(config: BotConfig) {
     this.mcpApiUrl = config.mcpApiUrl;
+    
+    // 确定传输模式
+    if (config.mcpTransportMode && config.mcpTransportMode !== 'auto') {
+      this.transportMode = config.mcpTransportMode;
+    } else {
+      this.transportMode = detectTransportMode(this.mcpApiUrl);
+    }
+    
+    console.log(`[MCPClient] 传输模式: ${this.transportMode}`);
+  }
+
+  /**
+   * 确保已连接到MCP服务器
+   */
+  private async ensureConnected(): Promise<void> {
+    if (this.isConnected && this.client) {
+      return;
+    }
+
+    console.log(`[MCPClient] 正在连接MCP服务器（${this.transportMode}模式）...`);
+
+    try {
+      // 创建Client实例
+      this.client = new Client(
+        {
+          name: 'telegram-bot-mcp',
+          version: '1.0.0',
+        },
+        {
+          capabilities: {
+            tools: {},
+            resources: {},
+            prompts: {},
+          },
+        }
+      );
+
+      // 根据模式创建不同的传输层
+      const url = new URL(this.mcpApiUrl);
+      
+      if (this.transportMode === 'sse') {
+        // SSE模式
+        this.transport = new SSEClientTransport(url);
+      } else {
+        // StreamableHTTP模式
+        this.transport = new StreamableHTTPClientTransport(
+          url,
+          {
+            requestInit: {
+              headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+            },
+          }
+        );
+      }
+
+      // 连接（带超时）
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('MCP连接超时')), this.TIMEOUT);
+      });
+
+      await Promise.race([
+        this.client.connect(this.transport),
+        timeoutPromise,
+      ]);
+
+      this.isConnected = true;
+      console.log(`[MCPClient] ✅ ${this.transportMode}连接成功`);
+    } catch (error) {
+      console.error("[MCPClient] ❌ 连接失败:", error);
+      this.client = null;
+      this.transport = null;
+      this.isConnected = false;
+      throw error;
+    }
   }
 
   /**
@@ -73,30 +150,31 @@ export class MCPSSEClient {
    */
   async listTools(): Promise<MCPTool[]> {
     try {
-      console.log("[MCPSSEClient] 正在获取工具列表...");
+      await this.ensureConnected();
       
-      const request: MCPRequest = {
-        jsonrpc: "2.0",
-        id: ++this.requestId,
-        method: "tools/list",
-        params: {},
-      };
+      console.log("[MCPClient] 正在获取工具列表...");
+      
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('listTools超时')), this.TIMEOUT);
+      });
 
-      const response = await this.sendRequest(request);
-      
-      if (response.error) {
-        throw new Error(`MCP错误: ${response.error.message}`);
-      }
+      const response = await Promise.race([
+        this.client!.listTools(),
+        timeoutPromise,
+      ]);
 
-      // 解析工具列表
-      const result = response.result as { tools?: MCPTool[] };
-      const tools = result?.tools || [];
-      
-      console.log(`[MCPSSEClient] ✅ 获取到 ${tools.length} 个工具`);
+      const tools: MCPTool[] = (response.tools || []).map((tool: any) => ({
+        name: tool.name,
+        description: tool.description || '',
+        inputSchema: tool.inputSchema || { type: 'object', properties: {} },
+      }));
+
+      console.log(`[MCPClient] ✅ 获取到 ${tools.length} 个工具`);
       return tools;
     } catch (error) {
-      console.error("[MCPSSEClient] ❌ 获取工具列表失败:", error);
-      return []; // 失败时返回空数组，降级为纯Gemini模式
+      console.error("[MCPClient] ❌ 获取工具失败:", error);
+      // 失败降级：返回空数组，AI以纯LLM模式运行
+      return [];
     }
   }
 
@@ -107,26 +185,46 @@ export class MCPSSEClient {
    * @returns 工具执行结果
    */
   async callTool(toolName: string, args: Record<string, unknown>): Promise<unknown> {
-    console.log(`[MCPSSEClient] 调用工具: ${toolName}`);
-    
-    const request: MCPRequest = {
-      jsonrpc: "2.0",
-      id: ++this.requestId,
-      method: "tools/call",
-      params: {
-        name: toolName,
-        arguments: args,
-      },
-    };
+    try {
+      await this.ensureConnected();
+      
+      console.log(`[MCPClient] 调用工具: ${toolName}`);
 
-    const response = await this.sendRequest(request);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`工具调用超时: ${toolName}`)), this.TIMEOUT);
+      });
 
-    if (response.error) {
-      throw new Error(`工具调用失败: ${response.error.message}`);
+      const response = await Promise.race([
+        this.client!.callTool({
+          name: toolName,
+          arguments: args,
+        }),
+        timeoutPromise,
+      ]);
+
+      console.log(`[MCPClient] ✅ 工具 ${toolName} 执行成功`);
+      return response;
+    } catch (error) {
+      console.error(`[MCPClient] ❌ 工具调用失败:", error);
+      throw error;
     }
+  }
 
-    console.log(`[MCPSSEClient] ✅ 工具 ${toolName} 执行成功`);
-    return response.result;
+  /**
+   * 关闭连接
+   */
+  async close(): Promise<void> {
+    if (this.client) {
+      try {
+        await this.client.close();
+        console.log("[MCPClient] 连接已关闭");
+      } catch (error) {
+        console.error("[MCPClient] 关闭连接失败:", error);
+      }
+      this.client = null;
+      this.transport = null;
+      this.isConnected = false;
+    }
   }
 
   /**
@@ -144,109 +242,5 @@ export class MCPSSEClient {
         required: tool.inputSchema.required || [],
       },
     }));
-  }
-
-  /**
-   * 发送JSON-RPC请求到MCP服务器（SSE传输）
-   * @param request JSON-RPC请求对象
-   * @returns JSON-RPC响应对象
-   */
-  private async sendRequest(request: MCPRequest): Promise<MCPResponse> {
-    // 30秒超时保护（从收到用户消息开始计时，到返回结果结束）
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => {
-        reject(new Error(`MCP请求超时（${this.TIMEOUT}ms）`));
-      }, this.TIMEOUT);
-    });
-
-    const mainTask = async (): Promise<MCPResponse> => {
-      // 尝试策略：
-      // 1) POST JSON-RPC 到 SSE 端点（多数实现支持）
-      // 2) 若返回 404/405/400，则回退为 GET，并以 query 传递 method/id/params（兼容部分实现）
-      const tryPost = async (): Promise<Response> => {
-        console.log(`[MCPSSEClient] POST ${this.mcpApiUrl} method=${request.method}`);
-        return await fetch(this.mcpApiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream",
-          },
-          body: JSON.stringify(request),
-        });
-      };
-
-      const tryGet = async (): Promise<Response> => {
-        const url = new URL(this.mcpApiUrl);
-        url.searchParams.set("method", request.method);
-        url.searchParams.set("id", String(request.id));
-        if (request.params) url.searchParams.set("params", encodeURIComponent(JSON.stringify(request.params)));
-        console.log(`[MCPSSEClient] GET  ${url.toString()}`);
-        return await fetch(url.toString(), {
-          method: "GET",
-          headers: {
-            "Accept": "text/event-stream",
-          },
-        });
-      };
-
-      // 依次尝试
-      let response = await tryPost();
-      if (!response.ok && (response.status === 404 || response.status === 405 || response.status === 400)) {
-        console.warn(`[MCPSSEClient] POST返回${response.status}，回退GET重试...`);
-        response = await tryGet();
-      }
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      // 解析SSE响应
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("无法读取响应流");
-      }
-
-      const decoder = new TextDecoder();
-      let result: MCPResponse | null = null;
-
-      // 读取SSE事件流
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split("\n");
-
-        for (const line of lines) {
-          // SSE格式：data: <JSON>
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6).trim();
-            if (data && data !== "[DONE]") {
-              try {
-                const parsed = JSON.parse(data) as MCPResponse;
-                // 匹配请求ID的响应（若服务端未回传id，则直接接受第一条有效JSON）
-                if (!parsed.id || parsed.id === request.id) {
-                  result = parsed;
-                  break;
-                }
-              } catch (e) {
-                // 非JSON，忽略
-              }
-            }
-          }
-        }
-
-        if (result) break;
-      }
-
-      if (!result) {
-        throw new Error("未收到有效的MCP响应");
-      }
-
-      return result;
-    };
-
-    // 执行请求，带超时保护
-    return Promise.race([mainTask(), timeoutPromise]);
   }
 }
