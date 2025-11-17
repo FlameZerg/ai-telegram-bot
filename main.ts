@@ -7,7 +7,7 @@ const router = new Router();
 
 // Telegram Bot配置
 const BOT_TOKEN = Deno.env.get("8267891120:AAE711TC6XxztE_1yfz3McX35-eS0M9JUq4")!;
-const bot = new TelegramBot(8267891120:AAE711TC6XxztE_1yfz3McX35-eS0M9JUq4);
+const bot = new TelegramBot("8267891120:AAE711TC6XxztE_1yfz3McX35-eS0M9JUq4");
 
 // 消息处理逻辑
 async function handleMessage(message: any) {
