@@ -33,6 +33,13 @@ export function createBot(config: BotConfig): Bot {
           // 调用AI服务获取回复（传递完整配置）
           const aiReply = await getAIResponse(message, config);
 
+          // 安全检查：确保回复不为空（避免Telegram API报错）
+          if (!aiReply || aiReply.trim() === "") {
+            console.warn("[Bot] AI返回空文本，使用默认消息");
+            await ctx.api.editMessageText(chatId, messageId, "⚠️ AI服务返回了空响应，请稍后再试。");
+            return;
+          }
+
           // 编辑占位消息为AI真实回复
           await ctx.api.editMessageText(chatId, messageId, aiReply);
         } catch (error) {

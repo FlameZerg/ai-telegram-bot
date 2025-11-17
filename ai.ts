@@ -366,8 +366,10 @@ export async function getAIResponse(userMessage: string, config: BotConfig): Pro
         const secondData = await callAIWithFallback(secondRequestBody, config);
         const finalText = secondData.choices?.[0]?.message?.content;
 
-        if (!finalText) {
-          throw new Error("无法从AI第二次响应中提取文本");
+        // 如果AI返回空文本，使用默认消息（避免Telegram消息编辑失败）
+        if (!finalText || finalText.trim() === "") {
+          console.warn("[AI] AI返回空文本，使用默认消息");
+          return "✅ 工具调用完成，但AI未生成回复文字。请检查工具执行结果是否正常。";
         }
 
         console.log("[AI] 工具调用流程完成");
@@ -376,8 +378,11 @@ export async function getAIResponse(userMessage: string, config: BotConfig): Pro
 
       // 步骤 8: 如果没有工具调用，直接返回文本
       const replyText = assistantMessage?.content;
-      if (!replyText) {
-        throw new Error("无法从AI响应中提取回复文本");
+      
+      // 如果AI返回空文本，使用默认消息（避免Telegram消息编辑失败）
+      if (!replyText || replyText.trim() === "") {
+        console.warn("[AI] AI返回空文本（无工具调用），使用默认消息");
+        return "❌ AI未能生成有效回复，请重新描述您的问题或稍后再试。";
       }
 
       console.log("[AI] 直接回复（无工具调用）");
