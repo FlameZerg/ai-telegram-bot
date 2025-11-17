@@ -3,9 +3,9 @@
 import type { MCPToolRequest, MCPStreamEvent } from "./types.ts";
 
 /**
- * MCP API配置
+ * MCP API配置（优先使用环境变量）
  */
-const MCP_API_URL = "https://toolbelt.apexti.com/api/workspaces/4f923c1d-6736-450e-b4cf-933a0ea0c870/sse?apikey=9ecc0fffdfb0430cdaf10c46eefd4845c6d0305aeb53688f63fe27381e0d3a19";
+const MCP_API_URL = Deno.env.get("MCP_API_URL") ?? "https://toolbelt.apexti.com/api/workspaces/4f923c1d-6736-450e-b4cf-933a0ea0c870/sse?apikey=9ecc0fffdfb0430cdaf10c46eefd4845c6d0305aeb53688f63fe27381e0d3a19";
 
 /**
  * 调用MCP AI服务获取回复

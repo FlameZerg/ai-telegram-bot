@@ -39,17 +39,15 @@ async function main() {
     const bot = createBot(config);
     console.log("✅ Bot实例创建成功");
 
-    // 设置Webhook
-    const webhookUrl = `https://${config.webhookDomain}/webhook`;
-    await setupWebhook(bot, webhookUrl);
-
     // 创建HTTP服务器
     const handler = createWebhookHandler(bot);
     const port = parseInt(Deno.env.get("PORT") || "8000");
+    const webhookUrl = `https://${config.webhookDomain}/webhook`;
 
     // 启动服务器
     console.log(`🚀 服务器启动在端口 ${port}`);
     console.log(`📡 Webhook URL: ${webhookUrl}`);
+    console.log(`⚠️  请访问 https://${config.webhookDomain}/setup 来设置Webhook`);
 
     await Deno.serve(
       { port },
@@ -59,6 +57,24 @@ async function main() {
         // Webhook端点
         if (url.pathname === "/webhook" && req.method === "POST") {
           return await handler(req);
+        }
+
+        // 手动设置Webhook端点（在域名就绪后调用一次）
+        if (url.pathname === "/setup" && req.method === "GET") {
+          try {
+            const origin = `${url.protocol}//${url.host}`; // 从请求推导域名
+            const dynamicWebhookUrl = `${origin}/webhook`;
+            await setupWebhook(bot, dynamicWebhookUrl);
+            return new Response(
+              JSON.stringify({ success: true, webhook: dynamicWebhookUrl }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            );
+          } catch (e) {
+            return new Response(
+              JSON.stringify({ success: false, error: String(e) }),
+              { status: 500, headers: { "Content-Type": "application/json" } },
+            );
+          }
         }
 
         // 健康检查端点
