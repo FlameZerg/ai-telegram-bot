@@ -70,14 +70,39 @@ export function createBot(config: BotConfig): Bot {
  */
 async function handleUserMessage(ctx: any, message: string): Promise<void> {
   try {
-    // 显示"正在输入"状态
-    await ctx.replyWithChatAction("typing");
+    // 立即发送"思考中"占位消息，避免webhook超时
+    const placeholderMsg = await ctx.reply("💭 正在思考中...");
+    const chatId = ctx.chat.id;
+    const messageId = placeholderMsg.message_id;
 
-    // 调用AI服务获取回复
-    const aiReply = await getAIResponse(message);
+    // 异步调用AI（不阻塞webhook响应）
+    (async () => {
+      try {
+        // 显示"正在输入"状态
+        await ctx.api.sendChatAction(chatId, "typing");
 
-    // 发送AI回复
-    await ctx.reply(aiReply);
+        // 调用AI服务获取回复
+        const aiReply = await getAIResponse(message);
+
+        // 编辑占位消息为AI真实回复
+        await ctx.api.editMessageText(chatId, messageId, aiReply);
+      } catch (error) {
+        console.error("AI调用失败:", error);
+        // 编辑占位消息为错误提示
+        await ctx.api.editMessageText(
+          chatId,
+          messageId,
+          "抱歉，AI服务暂时不可用。可能原因：\n" +
+          "• MCP API响应超时\n" +
+          "• 网络连接问题\n\n" +
+          "请稍后再试。"
+        ).catch(() => {
+          // 如果编辑失败，发送新消息
+          ctx.api.sendMessage(chatId, "⚠️ AI服务调用失败，请稍后再试。");
+        });
+      }
+    })(); // 立即返回，不等待AI完成
+
   } catch (error) {
     console.error("处理消息失败:", error);
     await ctx.reply("抱歉，处理您的消息时遇到了问题，请稍后再试。");
