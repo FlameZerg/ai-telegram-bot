@@ -1,0 +1,7 @@
+# Deno Deploy 配置
+name: telegram-bot
+entrypoint: main.ts
+
+# 环境变量（需在Deploy控制台配置）
+# TELEGRAM_BOT_TOKEN: 您的Telegram Bot Token
+# WEBHOOK_DOMAIN: 您的部署域名（如：your-project.deno.dev）
