@@ -13,9 +13,9 @@ function loadConfig(): BotConfig {
                         Deno.env.get("DENO_DEPLOYMENT_ID")?.split("-")[0] || 
                         "localhost:8000";
   const mcpApiUrl = Deno.env.get("MCP_API_URL");
-  const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
-  const geminiApiUrl = Deno.env.get("GEMINI_API_URL") || "https://generativelanguage.googleapis.com";
-  const geminiModel = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
+  const geminiApiKey = Deno.env.get("AI_API_KEY");
+  const geminiApiUrl = Deno.env.get("AI_API_URL") || "https://api-inference.modelscope.cn/v1/chat/completions";
+  const geminiModel = Deno.env.get("AI_MODEL") || "GLM-4.5";
 
   // 验证必需配置
   if (!botToken) {
@@ -36,9 +36,9 @@ function loadConfig(): BotConfig {
 
   if (!geminiApiKey) {
     throw new Error(
-      "❌ 环境变量 GEMINI_API_KEY 未设置\n" +
+      "❌ 环境变量 AI_API_KEY 未设置\n" +
       "请在Deno Deploy控制台 Settings → Environment Variables 中添加:\n" +
-      "GEMINI_API_KEY=您的Google AI API密钥（从Google AI Studio获取）"
+      "AI_API_KEY=您的GLM-4.5 API密钥（从ModelScope获取）"
     );
   }
 

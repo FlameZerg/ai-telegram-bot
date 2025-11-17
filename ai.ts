@@ -1,34 +1,29 @@
-// ai.ts - AI服务模块（集成Google Gemini + MCP工具）
+// ai.ts - AI服务模块（集成GLM-4.5）
 
 import type { BotConfig } from "./types.ts";
-import { MCPSSEClient } from "./mcp_client.ts";
+// import { MCPSSEClient } from "./mcp_client.ts"; // TODO: MCP集成
 
 /**
- * Gemini API响应类型（带Function Calling）
+ * OpenAI兼容API响应类型
  */
-interface GeminiResponse {
-  candidates?: Array<{
-    content: {
-      parts: Array<{
-        text?: string;
-        functionCall?: {
-          name: string;
-          args: Record<string, unknown>;
-        };
-      }>;
+interface OpenAIResponse {
+  choices?: Array<{
+    message: {
+      role: string;
+      content: string;
     };
-    finishReason?: string;
+    finish_reason?: string;
   }>;
   error?: {
     message: string;
-    code: number;
+    type: string;
   };
 }
 
 /**
- * 调用Gemini AI服务获取回复（带MCP工具集成）
+ * 调用GLM-4.5 AI服务获取回复（OpenAI兼容API）
  * @param userMessage 用户消息
- * @param config Bot配置（包含Gemini和MCP配置）
+ * @param config Bot配置（包含GLM-4.5配置）
  * @returns AI回复文本
  */
 export async function getAIResponse(userMessage: string, config: BotConfig): Promise<string> {
@@ -39,152 +34,49 @@ export async function getAIResponse(userMessage: string, config: BotConfig): Pro
 
   const mainTask = async (): Promise<string> => {
     try {
-      // 步骤 1: 初始化MCP客户端并获取工具列表
-      console.log("[AI] 初始化MCP客户端...");
-      const mcpClient = new MCPSSEClient(config);
-      const mcpTools = await mcpClient.listTools();
+      console.log("[AI] 发送GLM-4.5请求...");
       
-      // 步骤 2: 转换为Gemini Function Declarations
-      const geminiFunctions = MCPSSEClient.toGeminiFunctions(mcpTools);
-      console.log(`[AI] 获取到 ${geminiFunctions.length} 个工具`);
-
-      // 步骤 3: 构建Gemini API URL
-      const apiUrl = `${config.geminiApiUrl}/v1beta/models/${config.geminiModel}:generateContent?key=${config.geminiApiKey}`;
-
-      // 步骤 4: 构建Gemini请求体（包含tools）
-      const requestBody: Record<string, unknown> = {
-        contents: [
+      // 构建OpenAI兼容API请求体
+      const requestBody = {
+        model: config.geminiModel, // "GLM-4.5"
+        messages: [
           {
             role: "user",
-            parts: [{ text: userMessage }],
+            content: userMessage,
           },
         ],
+        temperature: 0.7,
       };
 
-      // 如果有MCP工具，添加到请求中
-      if (geminiFunctions.length > 0) {
-        requestBody.tools = [
-          {
-            functionDeclarations: geminiFunctions,
-          },
-        ];
-      }
-
-      // 步骤 5: 发起第一次Gemini API请求
-      console.log("[AI] 发送Gemini请求...");
-      const response = await fetch(apiUrl, {
+      // 发起API请求
+      const response = await fetch(config.geminiApiUrl, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          "Authorization": `Bearer ${config.geminiApiKey}`,
         },
         body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        const errorData = await response.json() as GeminiResponse;
+        const errorText = await response.text();
         throw new Error(
-          `Gemini API错误 (${response.status}): ${
-            errorData.error?.message || "未知错误"
-          }`
+          `GLM-4.5 API错误 (${response.status}): ${errorText}`
         );
       }
 
-      const data = await response.json() as GeminiResponse;
-      const parts = data.candidates?.[0]?.content?.parts || [];
+      const data = await response.json() as OpenAIResponse;
 
-      // 步骤 6: 检测是否有functionCall
-      const functionCallPart = parts.find((part) => part.functionCall);
-      
-      if (functionCallPart?.functionCall) {
-        // 步骤 7: 调用MCP工具
-        console.log(`[AI] 检测到工具调用: ${functionCallPart.functionCall.name}`);
-        
-        const toolName = functionCallPart.functionCall.name;
-        const toolArgs = functionCallPart.functionCall.args;
-        
-        let toolResult: unknown;
-        try {
-          toolResult = await mcpClient.callTool(toolName, toolArgs);
-          console.log("[AI] 工具执行成功");
-        } catch (error) {
-          console.error("[AI] 工具执行失败:", error);
-          toolResult = {
-            error: error instanceof Error ? error.message : "工具调用失败",
-          };
-        }
-
-        // 步骤 8: 将工具结果返回Gemini（第二次请求）
-        console.log("[AI] 将工具结果返回Gemini...");
-        const secondRequestBody = {
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: userMessage }],
-            },
-            {
-              role: "model",
-              parts: [
-                {
-                  functionCall: {
-                    name: toolName,
-                    args: toolArgs,
-                  },
-                },
-              ],
-            },
-            {
-              role: "function",
-              parts: [
-                {
-                  functionResponse: {
-                    name: toolName,
-                    response: toolResult,
-                  },
-                },
-              ],
-            },
-          ],
-          tools: requestBody.tools, // 保持工具定义
-        };
-
-        const secondResponse = await fetch(apiUrl, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(secondRequestBody),
-        });
-
-        if (!secondResponse.ok) {
-          const errorData = await secondResponse.json() as GeminiResponse;
-          throw new Error(
-            `Gemini API错误 (${secondResponse.status}): ${
-              errorData.error?.message || "未知错误"
-            }`
-          );
-        }
-
-        const secondData = await secondResponse.json() as GeminiResponse;
-        const finalText = secondData.candidates?.[0]?.content?.parts?.[0]?.text;
-        
-        if (!finalText) {
-          throw new Error("无法从Gemini第二次响应中提取文本");
-        }
-
-        console.log("[AI] 工具调用流程完成");
-        return finalText.trim();
-      }
-
-      // 步骤 9: 如果没有工具调用，直接返回文本
-      const replyText = parts[0]?.text;
+      // 提取AI回复文本
+      const replyText = data.choices?.[0]?.message?.content;
       if (!replyText) {
-        throw new Error("无法从Gemini响应中提取回复文本");
+        throw new Error("无法从GLM-4.5响应中提取回复文本");
       }
 
-      console.log("[AI] 直接回复（无工具调用）");
+      console.log("[AI] GLM-4.5回复成功");
       return replyText.trim();
     } catch (error) {
-      console.error("[AI] Gemini API调用失败:", error);
+      console.error("[AI] GLM-4.5 API调用失败:", error);
       throw error;
     }
   };
