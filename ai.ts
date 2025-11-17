@@ -48,7 +48,7 @@ export async function getAIResponse(userMessage: string, config: BotConfig): Pro
       const mcpTools = await mcpClient.listTools();
       console.log(`[AI] 获取到 ${mcpTools.length} 个MCP工具`);
 
-      // 步骤 2: 转换为ZhipuAI tools格式
+      // 自动降级：若工具为空，则不携带tools参数，走纯LLM模式
       const zhipuTools = mcpTools.map((tool) => ({
         type: "function" as const,
         function: {
@@ -73,6 +73,8 @@ export async function getAIResponse(userMessage: string, config: BotConfig): Pro
       // 如果有MCP工具，添加到请求中
       if (zhipuTools.length > 0) {
         requestBody.tools = zhipuTools;
+      } else {
+        console.warn("[AI] 未获取到MCP工具，将以纯LLM模式处理本次对话");
       }
 
       // 步骤 4: 发起第一次API请求

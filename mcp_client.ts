@@ -152,7 +152,7 @@ export class MCPSSEClient {
    * @returns JSON-RPC响应对象
    */
   private async sendRequest(request: MCPRequest): Promise<MCPResponse> {
-    // 30秒超时保护
+    // 30秒超时保护（从收到用户消息开始计时，到返回结果结束）
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => {
         reject(new Error(`MCP请求超时（${this.TIMEOUT}ms）`));
@@ -160,9 +160,12 @@ export class MCPSSEClient {
     });
 
     const mainTask = async (): Promise<MCPResponse> => {
-      try {
-        // 发起SSE请求
-        const response = await fetch(this.mcpApiUrl, {
+      // 尝试策略：
+      // 1) POST JSON-RPC 到 SSE 端点（多数实现支持）
+      // 2) 若返回 404/405/400，则回退为 GET，并以 query 传递 method/id/params（兼容部分实现）
+      const tryPost = async (): Promise<Response> => {
+        console.log(`[MCPSSEClient] POST ${this.mcpApiUrl} method=${request.method}`);
+        return await fetch(this.mcpApiUrl, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -170,59 +173,77 @@ export class MCPSSEClient {
           },
           body: JSON.stringify(request),
         });
+      };
 
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
+      const tryGet = async (): Promise<Response> => {
+        const url = new URL(this.mcpApiUrl);
+        url.searchParams.set("method", request.method);
+        url.searchParams.set("id", String(request.id));
+        if (request.params) url.searchParams.set("params", encodeURIComponent(JSON.stringify(request.params)));
+        console.log(`[MCPSSEClient] GET  ${url.toString()}`);
+        return await fetch(url.toString(), {
+          method: "GET",
+          headers: {
+            "Accept": "text/event-stream",
+          },
+        });
+      };
 
-        // 解析SSE响应
-        const reader = response.body?.getReader();
-        if (!reader) {
-          throw new Error("无法读取响应流");
-        }
+      // 依次尝试
+      let response = await tryPost();
+      if (!response.ok && (response.status === 404 || response.status === 405 || response.status === 400)) {
+        console.warn(`[MCPSSEClient] POST返回${response.status}，回退GET重试...`);
+        response = await tryGet();
+      }
 
-        const decoder = new TextDecoder();
-        let result: MCPResponse | null = null;
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
 
-        // 读取SSE事件流
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
+      // 解析SSE响应
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("无法读取响应流");
+      }
 
-          const chunk = decoder.decode(value, { stream: true });
-          const lines = chunk.split("\n");
+      const decoder = new TextDecoder();
+      let result: MCPResponse | null = null;
 
-          for (const line of lines) {
-            // SSE格式：data: <JSON>
-            if (line.startsWith("data: ")) {
-              const data = line.slice(6).trim();
-              if (data && data !== "[DONE]") {
-                try {
-                  const parsed = JSON.parse(data) as MCPResponse;
-                  // 匹配请求ID的响应
-                  if (parsed.id === request.id) {
-                    result = parsed;
-                    break;
-                  }
-                } catch {
-                  // 忽略非JSON行
+      // 读取SSE事件流
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          // SSE格式：data: <JSON>
+          if (line.startsWith("data: ")) {
+            const data = line.slice(6).trim();
+            if (data && data !== "[DONE]") {
+              try {
+                const parsed = JSON.parse(data) as MCPResponse;
+                // 匹配请求ID的响应（若服务端未回传id，则直接接受第一条有效JSON）
+                if (!parsed.id || parsed.id === request.id) {
+                  result = parsed;
+                  break;
                 }
+              } catch (e) {
+                // 非JSON，忽略
               }
             }
           }
-
-          if (result) break;
         }
 
-        if (!result) {
-          throw new Error("未收到有效的MCP响应");
-        }
-
-        return result;
-      } catch (error) {
-        console.error("[MCPSSEClient] 请求失败:", error);
-        throw error;
+        if (result) break;
       }
+
+      if (!result) {
+        throw new Error("未收到有效的MCP响应");
+      }
+
+      return result;
     };
 
     // 执行请求，带超时保护
