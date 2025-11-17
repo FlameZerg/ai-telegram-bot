@@ -1,11 +1,6 @@
 // types.ts - 类型定义
 
 /**
- * MCP传输模式类型
- */
-export type MCPTransportMode = 'sse' | 'streamable_http' | 'auto';
-
-/**
  * AI模型配置
  */
 export interface AIModel {
@@ -19,8 +14,6 @@ export interface AIModel {
 export interface BotConfig {
   botToken: string;      // Telegram Bot Token
   webhookDomain: string; // Webhook域名
-  mcpApiUrl: string;     // MCP工具服务器URL
-  mcpTransportMode?: MCPTransportMode; // MCP传输模式（默认auto自动检测）
   geminiApiKey: string;  // AI API密钥
   geminiApiUrl: string;  // AI API基础URL
   geminiModel: string;   // 默认AI模型名称

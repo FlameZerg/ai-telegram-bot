@@ -12,7 +12,6 @@ function loadConfig(): BotConfig {
   const webhookDomain = Deno.env.get("WEBHOOK_DOMAIN") || 
                         Deno.env.get("DENO_DEPLOYMENT_ID")?.split("-")[0] || 
                         "localhost:8000";
-  const mcpApiUrl = Deno.env.get("MCP_API_URL");
   const geminiApiKey = Deno.env.get("AI_API_KEY");
   const geminiApiUrl = Deno.env.get("AI_API_URL") || "https://api-inference.modelscope.cn/v1/chat/completions";
   const geminiModel = "ZhipuAI/GLM-4.5"; // 模型名称硬编码，日后更换模型直接修改此行
@@ -21,28 +20,20 @@ function loadConfig(): BotConfig {
   if (!botToken) {
     throw new Error(
       "❌ 环境变量 TELEGRAM_BOT_TOKEN 未设置\n" +
-      "请在Deno Deploy控制台 Settings → Environment Variables 中添加:\n" +
+      "请在Deno Deploy控制台 Settings → Environment Variables 中添加：\n" +
       "TELEGRAM_BOT_TOKEN=您的Bot Token（从@BotFather获取）"
-    );
-  }
-
-  if (!mcpApiUrl) {
-    throw new Error(
-      "❌ 环境变量 MCP_API_URL 未设置\n" +
-      "请在Deno Deploy控制台 Settings → Environment Variables 中添加:\n" +
-      "MCP_API_URL=您的MCP工具服务器地址（例如：https://toolbelt.apexti.com/api/...）"
     );
   }
 
   if (!geminiApiKey) {
     throw new Error(
       "❌ 环境变量 AI_API_KEY 未设置\n" +
-      "请在Deno Deploy控制台 Settings → Environment Variables 中添加:\n" +
-      "AI_API_KEY=您的GLM-4.5 API密钥（从ModelScope获取）"
+      "请在Deno Deploy控制台 Settings → Environment Variables 中添加：\n" +
+      "AI_API_KEY=您的AI API密钥（从ModelScope或其他服务商获取）"
     );
   }
 
-  return { botToken, webhookDomain, mcpApiUrl, geminiApiKey, geminiApiUrl, geminiModel };
+  return { botToken, webhookDomain, geminiApiKey, geminiApiUrl, geminiModel };
 }
 
 /**

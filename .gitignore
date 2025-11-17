@@ -1,0 +1,19 @@
+# 环境变量文件（包含敏感信息）
+.env
+.env.local
+
+# Deno 缓存
+.deno/
+
+# IDE 配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 日志文件
+*.log
