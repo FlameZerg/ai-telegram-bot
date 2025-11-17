@@ -91,7 +91,7 @@ deno task dev
    git init
    git add .
    git commit -m "Initial commit"
-   git remote add origin https://github.com/your-username/telegram_bot.git
+   git remote add origin https://github.com/your-username/ai-telegram-bot.git
    git push -u origin main
    ```
 
@@ -99,7 +99,7 @@ deno task dev
    - 访问 [Deno Deploy](https://dash.deno.com/)
    - 点击 **New Project**
    - 选择 **GitHub Integration**
-   - 选择你的仓库 `telegram_bot`
+   - 选择你的仓库 `ai-telegram-bot`
    - 入口文件：`main.ts`
    - 点击 **Link** 完成部署
 
