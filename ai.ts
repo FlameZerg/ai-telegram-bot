@@ -14,85 +14,86 @@ const MCP_API_URL = Deno.env.get("MCP_API_URL") ?? "https://toolbelt.apexti.com/
  */
 export async function getAIResponse(userMessage: string): Promise<string> {
   try {
-    // 构造请求体
-    const requestBody: MCPToolRequest = {
-      model: "claude-sonnet-4-20250514",
-      messages: [
-        {
-          role: "user",
-          content: userMessage,
+    // 优先尝试 Anthropic/消息式 POST 流
+    const tryAnthropic = async () => {
+      const body: MCPToolRequest = {
+        model: "claude-sonnet-4-20250514",
+        messages: [{ role: "user", content: userMessage }],
+        stream: true,
+      };
+      return await fetch(MCP_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream",
         },
-      ],
-      stream: true,
+        body: JSON.stringify(body),
+      });
     };
 
-    // 发送SSE请求
-    const response = await fetch(MCP_API_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "text/event-stream",
-      },
-      body: JSON.stringify(requestBody),
-    });
+    // 兼容某些MCP实现：POST { input: text }
+    const tryInputPost = async () => {
+      return await fetch(MCP_API_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream",
+        },
+        body: JSON.stringify({ input: userMessage, stream: true }),
+      });
+    };
 
-    if (!response.ok) {
-      throw new Error(`MCP API请求失败: ${response.status} ${response.statusText}`);
-    }
+    // 兜底：GET ?q= 文本（SSE）
+    const tryGet = async () => {
+      const url = new URL(MCP_API_URL);
+      url.searchParams.set("q", userMessage);
+      return await fetch(url, {
+        method: "GET",
+        headers: { "Accept": "text/event-stream" },
+      });
+    };
 
-    // 解析SSE流
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error("无法读取响应流");
-    }
-
-    const decoder = new TextDecoder();
-    let aiResponse = "";
-
-    // 读取SSE事件流
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split("\n");
-
-      for (const line of lines) {
-        // SSE格式: data: {...}
-        if (line.startsWith("data: ")) {
-          const data = line.slice(6).trim();
-          
-          // 跳过空数据和结束标记
-          if (!data || data === "[DONE]") continue;
-
-          try {
-            const event: MCPStreamEvent = JSON.parse(data);
-
-            // 处理文本增量
-            if (event.type === "content_block_delta" && event.delta?.text) {
-              aiResponse += event.delta.text;
+    // 将SSE响应解析为纯文本
+    const readSSE = async (response: Response): Promise<string> => {
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("无法读取响应流");
+      const decoder = new TextDecoder();
+      let text = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        for (const line of chunk.split("\n")) {
+          if (!line) continue;
+          if (line.startsWith("data:")) {
+            const data = line.slice(5).trim();
+            if (!data || data === "[DONE]") continue;
+            // 兼容两种：JSON事件 或 纯文本增量
+            try {
+              const evt: MCPStreamEvent = JSON.parse(data);
+              if (evt.type === "content_block_delta" && evt.delta?.text) text += evt.delta.text;
+              if (evt.type === "error") throw new Error(evt.error?.message || "MCP错误");
+            } catch {
+              // 非JSON，按纯文本拼接
+              text += data;
             }
-
-            // 处理错误
-            if (event.type === "error") {
-              console.error("MCP API错误:", event.error?.message);
-              throw new Error(event.error?.message || "MCP API返回错误");
-            }
-
-            // 消息结束
-            if (event.type === "message_stop") {
-              break;
-            }
-          } catch (parseError) {
-            // 跳过无法解析的行
-            console.warn("跳过无法解析的SSE数据:", data);
           }
         }
       }
+      return text.trim();
+    };
+
+    // 依次尝试三种调用方式
+    const attempts = [tryAnthropic, tryInputPost, tryGet];
+    for (const attempt of attempts) {
+      const resp = await attempt();
+      if (resp.ok) {
+        const out = await readSSE(resp);
+        if (out) return out;
+      }
     }
 
-    // 返回AI回复，如果为空则返回默认消息
-    return aiResponse.trim() || "抱歉，我暂时无法处理您的请求。";
+    throw new Error("所有MCP调用方式均失败");
   } catch (error) {
     console.error("AI服务调用失败:", error);
     return "抱歉，AI服务暂时不可用，请稍后再试。";

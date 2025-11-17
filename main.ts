@@ -46,8 +46,8 @@ async function main() {
 
     // 启动服务器
     console.log(`🚀 服务器启动在端口 ${port}`);
-    console.log(`📡 Webhook URL: ${webhookUrl}`);
-    console.log(`⚠️  请访问 https://${config.webhookDomain}/setup 来设置Webhook`);
+    console.log(`📡 预期 Webhook URL: ${webhookUrl}`);
+    console.log(`⚠️  首次部署后，请在浏览器访问 /setup 一次以注册Webhook`);
 
     await Deno.serve(
       { port },
