@@ -15,7 +15,7 @@ function loadConfig(): BotConfig {
   const mcpApiUrl = Deno.env.get("MCP_API_URL");
   const geminiApiKey = Deno.env.get("AI_API_KEY");
   const geminiApiUrl = Deno.env.get("AI_API_URL") || "https://api-inference.modelscope.cn/v1/chat/completions";
-  const geminiModel = Deno.env.get("AI_MODEL") || "GLM-4.5";
+  const geminiModel = "ZhipuAI/GLM-4.5"; // 模型名称硬编码，日后更换模型直接修改此行
 
   // 验证必需配置
   if (!botToken) {
