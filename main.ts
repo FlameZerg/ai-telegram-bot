@@ -12,9 +12,12 @@ function loadConfig(): BotConfig {
   const webhookDomain = Deno.env.get("WEBHOOK_DOMAIN") || 
                         Deno.env.get("DENO_DEPLOYMENT_ID")?.split("-")[0] || 
                         "localhost:8000";
-  const mcpApiUrl = Deno.env.get("MCP_API_URL") || 
-    "https://toolbelt.apexti.com/api/workspaces/4f923c1d-6736-450e-b4cf-933a0ea0c870/sse?apikey=9ecc0fffdfb0430cdaf10c46eefd4845c6d0305aeb53688f63fe27381e0d3a19";
+  const mcpApiUrl = Deno.env.get("MCP_API_URL");
+  const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+  const geminiApiUrl = Deno.env.get("GEMINI_API_URL") || "https://generativelanguage.googleapis.com";
+  const geminiModel = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
 
+  // 验证必需配置
   if (!botToken) {
     throw new Error(
       "❌ 环境变量 TELEGRAM_BOT_TOKEN 未设置\n" +
@@ -23,7 +26,23 @@ function loadConfig(): BotConfig {
     );
   }
 
-  return { botToken, webhookDomain, mcpApiUrl };
+  if (!mcpApiUrl) {
+    throw new Error(
+      "❌ 环境变量 MCP_API_URL 未设置\n" +
+      "请在Deno Deploy控制台 Settings → Environment Variables 中添加:\n" +
+      "MCP_API_URL=您的MCP工具服务器地址（例如：https://toolbelt.apexti.com/api/...）"
+    );
+  }
+
+  if (!geminiApiKey) {
+    throw new Error(
+      "❌ 环境变量 GEMINI_API_KEY 未设置\n" +
+      "请在Deno Deploy控制台 Settings → Environment Variables 中添加:\n" +
+      "GEMINI_API_KEY=您的Google AI API密钥（从Google AI Studio获取）"
+    );
+  }
+
+  return { botToken, webhookDomain, mcpApiUrl, geminiApiKey, geminiApiUrl, geminiModel };
 }
 
 /**

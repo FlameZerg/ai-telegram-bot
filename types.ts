@@ -33,4 +33,7 @@ export interface BotConfig {
   botToken: string;
   webhookDomain: string;
   mcpApiUrl: string;
+  geminiApiKey: string;  // Gemini API密钥
+  geminiApiUrl: string;  // Gemini API基础URL
+  geminiModel: string;   // Gemini模型名称
 }
