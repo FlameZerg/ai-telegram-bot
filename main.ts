@@ -7,7 +7,7 @@ import { createBot, createWebhookHandler, setupWebhook } from "./bot.ts";
  * 从环境变量加载配置
  */
 function loadConfig(): BotConfig {
-  const botToken = Deno.env.get("TELEGRAM_BOT_TOKEN");
+  const botToken = Deno.env.get("8267891120:AAE711TC6XxztE_1yfz3McX35-eS0M9JUq4");
   const webhookDomain = Deno.env.get("WEBHOOK_DOMAIN");
   const mcpApiUrl = Deno.env.get("MCP_API_URL") || 
     "https://toolbelt.apexti.com/api/workspaces/4f923c1d-6736-450e-b4cf-933a0ea0c870/sse?apikey=9ecc0fffdfb0430cdaf10c46eefd4845c6d0305aeb53688f63fe27381e0d3a19";
