@@ -205,7 +205,7 @@ export class MCPSSEClient {
       console.log(`[MCPClient] ✅ 工具 ${toolName} 执行成功`);
       return response;
     } catch (error) {
-      console.error(`[MCPClient] ❌ 工具调用失败:", error);
+      console.error(`[MCPClient] ❌ 工具调用失败:`, error);
       throw error;
     }
   }
