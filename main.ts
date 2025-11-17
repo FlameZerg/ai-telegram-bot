@@ -79,7 +79,7 @@ async function main() {
     );
   } catch (error) {
     console.error("❌ 启动失败:", error);
-    Deno.exit(1);
+    throw error; // Deno Deploy不允许使用Deno.exit()
   }
 }
 
