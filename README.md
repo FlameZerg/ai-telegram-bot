@@ -17,7 +17,7 @@
 ### 🚀 多模型自动切换
 - **9 个 AI 模型**按优先级排序，自动切换
 - **智能限流处理**：429 错误自动切换下一个模型
-- **支持的模型**：
+- **支持的模型（魔搭模型个人使用）**：
   - ZhipuAI/GLM-4.6、GLM-4.5
   - MiniMax/MiniMax-M2、MiniMax-M1-80k
   - Qwen/Qwen3-Coder-480B、Qwen3-VL-235B、Qwen3-Next-80B
@@ -68,8 +68,8 @@ telegram_bot/
 
 ```bash
 # 克隆仓库
-git clone https://github.com/your-username/telegram_bot.git
-cd telegram_bot
+git clone https://github.com/FlameZerg/ai-telegram-bot.git
+cd ai-telegram-bot
 
 # 复制环境变量模板
 cp .env.example .env
